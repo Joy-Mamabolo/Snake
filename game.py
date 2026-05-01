@@ -35,11 +35,12 @@ class Snake(Agent):
         
         if closest_prey:
             if closest_prey.x > closest_prey.y:
-                self.move(self.speed, 0, grid_size = GRID_SIZE )
+                return self.speed, 0
             else:
-                self.move(0, self.speed, grid_size = GRID_SIZE)
-             
-        
+                return 0, self.speed
+        else:
+            return 0, 0 # if there are no prey, stay in place - should not be the case since the game should end when all prey are captured
+
 class Prey(Agent):
     def __init__(self, x, y, learning = False):
         super().__init__(x, y, speed = 1, symbol="P")
@@ -118,7 +119,18 @@ class Game:
 
     def step(self):
         # snake moves
-        self.snake.chase(self.prey_list) # Snake needs to be prevented from moving into the safe zone if it is active.
+        sdx,sdy = self.snake.chase(self.prey_list) # chase function determines the proposed move of the snake and game checks if the move is valid before executing it.
+
+        proposed_snake_x = self.snake.x + sdx
+        proposed_snake_y = self.snake.y + sdy
+
+        if self.is_in_bounds(proposed_snake_x, proposed_snake_y):
+            if any((sz.active and sz.x <= proposed_snake_x <= sz.x + sz.size and sz.y <= proposed_snake_y <= sz.y + sz.size) for sz in self.safe_zone):
+                self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to condider other options later.
+            else:
+                self.snake.move(sdx, sdy) # proposed move is valid, execute it
+        else:
+            self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
 
         #prey moves
         for prey in self.prey_list:
@@ -139,7 +151,7 @@ class Game:
                     if sz.active and sz.current_occupants >= sz.capacity:
                         sz.active = False
                     else:
-
+                        pass # Want to implement when safe zone becomes active again after occupants fall below capacity.
 
 
 
