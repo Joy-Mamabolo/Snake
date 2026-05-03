@@ -1,4 +1,7 @@
 import random
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 GRID_SIZE = 20
 NUM_PREY = 5
@@ -44,15 +47,22 @@ class Snake(Agent):
 class Prey(Agent):
     def __init__(self, x, y, learning = False):
         super().__init__(x, y, speed = 1, symbol="P")
+        self.alive = True
         self.learning = learning
 
         self.q_table = {} if learning else None # State-action value table for Q-learning not implemented yet
 
         self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
+        
     
     def propose_move(self, grid_size = GRID_SIZE): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
-
-        dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
+        if self.learning:
+            # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
+            dx = 0
+            dy = 0
+            pass  # action selection based on Q-table
+        else:
+            dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
         
         return dx, dy
     
@@ -149,12 +159,17 @@ class Game:
                     sz.current_occupants +=1
 
                     if sz.active and sz.current_occupants >= sz.capacity:
-                        sz.active = False
+                        sz.active = False # Safe zone becomes inactive when capacity is reached.
+                    elif sz.active and sz.current_occupants < sz.capacity:
+                        pass # Safe zone is active and below capacity, nothing changes
+                    elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<=sz.x+sz.size and sz.y<=self.snake.y<=sz.y+sz.size):
+                        sz.active = True # Safe zone becomes active again when occupants are below capacity and snake is no longer inside the safe zone.
                     else:
-                        pass # Want to implement when safe zone becomes active again after occupants fall below capacity.
-
-
-
-
+                        pass # Safe zone is inactive and either occupants are above capacity or snake is still inside, nothing changes
+        
         # check captures
+        for prey in self.prey_list:
+            if prey.x == self.snake.x and prey.y == self.snake.y:
+                prey.alive = False
+                self.prey_list.remove(prey) # remove captured prey from the game
 
