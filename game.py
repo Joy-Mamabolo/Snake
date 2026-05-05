@@ -48,14 +48,14 @@ class Prey(Agent):
     def __init__(self, x, y, learning = False):
         super().__init__(x, y, speed = 1, symbol="P")
         self.alive = True
+        self.generation = 0 # generation of the prey - also used to track how many times the prey has been captured and respawned.
+        
         self.learning = learning
-
         self.q_table = {} if learning else None # State-action value table for Q-learning not implemented yet
-
         self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
         
     
-    def propose_move(self, grid_size = GRID_SIZE): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
+    def propose_move(self): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
         if self.learning:
             # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
             dx = 0
@@ -117,6 +117,7 @@ class Game:
         self.snake = Snake(grid_size//2, grid_size//2)
         self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1)) for _ in range(num_prey)]
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
+        self.step_count = 0 # keep track of the number of steps taken in the game
     
     def is_in_safe_zone(self, prey):
         for safe_zone in self.safe_zone:
@@ -142,15 +143,24 @@ class Game:
         else:
             self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
 
-        #prey moves
+        #prey
         for prey in self.prey_list:
-            dx, dy = prey.propose_move()
-
-            if self.is_in_bounds(prey.x + dx, prey.y + dy):
-                prey.move(dx, dy, grid_size = self.grid_size)
+            
+            if not prey.alive:
+                # Captured Prey Respawns
+                prey.x = 0 if self.snake.x>self.grid_size-1-self.snake.x else self.grid_size-1  # furthest distance away from the snake within bounds at that step.
+                prey.y = 0 if self.snake.y>self.grid_size-1-self.snake.y else self.grid_size-1
+                prey.alive = True
+            
             else:
-                prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
-                prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey.
+                # Prey moves
+                dx, dy = prey.propose_move()
+
+                if self.is_in_bounds(prey.x + dx, prey.y + dy):
+                    prey.move(dx, dy, grid_size = self.grid_size)
+                else:
+                    prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
+                    prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey.
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
@@ -171,5 +181,8 @@ class Game:
         for prey in self.prey_list:
             if prey.x == self.snake.x and prey.y == self.snake.y:
                 prey.alive = False
-                self.prey_list.remove(prey) # remove captured prey from the game
+                # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
+
+
+        return self.snake, self.prey_list, self.safe_zone
 
