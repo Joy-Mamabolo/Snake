@@ -1,3 +1,4 @@
+import json
 import random
 import numpy as np
 import pandas as pd
@@ -115,7 +116,7 @@ class Game:
     def __init__(self, grid_size = GRID_SIZE, num_prey = NUM_PREY):
         self.grid_size = grid_size
         self.snake = Snake(grid_size//2, grid_size//2)
-        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1)) for _ in range(num_prey)]
+        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random())) for _ in range(num_prey)]
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         self.step_count = 0 # keep track of the number of steps taken in the game
     
@@ -160,7 +161,7 @@ class Game:
                     prey.move(dx, dy, grid_size = self.grid_size)
                 else:
                     prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
-                    prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey.
+                    prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey. 
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
@@ -185,4 +186,48 @@ class Game:
 
 
         return self.snake, self.prey_list, self.safe_zone
+
+    def game_write_to_file(self):
+        # Save the current game to a file for later analysis.
+        data = {
+            'step': self.step_count,
+            'snake_position': (self.snake.x, self.snake.y),
+            'prey_positions': [(prey.x, prey.y, prey.alive) for prey in self.prey_list],
+            'safe_zone_status': [(sz.x, sz.y, sz.size, sz.active, sz.current_occupants) for sz in self.safe_zone]
+        }
+
+        with open('game_log.json', 'a') as f:
+            f.write(json.dumps(data) + '\n')
+    
+    def game_from_file(self, filename):
+        # Load a game from a file. This is for analysis and visualization of past games, not for resuming a game. It returns a list of game states.
+        with open(filename, 'r') as f:
+            game_states = [json.loads(line) for line in f]
+        
+        return game_states
+
+
+def visualize_game(game_states, grid_size = GRID_SIZE):
+
+
+    for game_state in game_states:
+        grid = np.zeros((grid_size, grid_size))
+
+        # Mark snake position
+        grid[game_state['snake_position'][0], game_state['snake_position'][1]] = 1
+        # Mark prey positions
+        for prey in game_state['prey_positions']:
+            if prey[2]:  # prey.alive
+                grid[prey[0], prey[1]] = 2
+        
+        # Mark safe zone
+        for sz in game_state['safe_zone_status']:
+            grid[sz[0]:sz[0] + sz[2], sz[1]:sz[1] + sz[2]] = 3 if sz[3] else 4
+        
+        plt.imshow(grid, cmap = 'viridis', vmin=0, vmax = 4, alpha = 0.5)
+        plt.title(f'Snake Game Visualization: Step {game_state["step"]}')
+
+        plt.pause(0.5)
+    
+    plt.show()
 
