@@ -41,10 +41,18 @@ class Snake(Agent):
                 closest_prey = prey
         
         if closest_prey:
-            if closest_prey.x > closest_prey.y:
-                return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed,0)
-            else:
+            if closest_prey.x == self.x:
+                # snake and prey are on the same vertical line, but at different heights
+                return (0, self.speed) if closest_prey.y>=self.y else (0, -self.speed) # go up if the prey is above, otherwise go down
+            elif closest_prey.y == self.y:
+                # snake and prey are on the same horizontal line, but at different widths
+                return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed,0) # go right if prey is to the right, otherwise left
+            elif closest_prey.x>closest_prey.y:
+                # when deciding whether to move vertically or horizontally, favour the shorter distance - y
                 return (0, self.speed) if closest_prey.y>=self.y else (0, -self.speed)
+            else:
+                # when deciding whether to move vertically or horizontally, favour the shorter distance - x
+                return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed, 0)
         else:
             return 0, 0 # if there are no prey, stay in place - should not be the case since the game should end when all prey are captured
 
@@ -158,6 +166,7 @@ class Game:
                 # Captured Prey Respawns
                 prey.x = 0 if self.snake.x>self.grid_size-1-self.snake.x else self.grid_size-1  # furthest distance away from the snake within bounds at that step.
                 prey.y = 0 if self.snake.y>self.grid_size-1-self.snake.y else self.grid_size-1
+                prey.generation+=1
                 prey.alive = True
             
             else:
@@ -190,6 +199,7 @@ class Game:
         for prey in self.prey_list:
             if prey.x == self.snake.x and prey.y == self.snake.y:
                 prey.alive = False
+                
                 # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
 
 
@@ -198,9 +208,10 @@ class Game:
     def game_write_to_file(self):
         # Save the current game to a file for later analysis.
         data = {
+            #'game': 0, # I want to implement a game counter for the visualization portion
             'step': self.step_count,
             'snake_position': (self.snake.x, self.snake.y),
-            'prey_positions': [(prey.x, prey.y, prey.learning) for prey in self.prey_list],
+            'prey_positions': [(prey.x, prey.y, prey.learning, prey.alive, prey.generation) for prey in self.prey_list],
             'safe_zone_status': [(sz.x, sz.y, sz.size, sz.active, sz.current_occupants) for sz in self.safe_zone]
         }
 
@@ -221,8 +232,12 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     _, ax = plt.subplots()
     img = ax.imshow(grid, cmap = 'tab20', vmin=0, vmax = 4, alpha = 0.5)
 
-    snake_scatter = ax.scatter([],[], c = "red", marker = 's', label = "Snake")
-    prey_scatter = ax.scatter([], [], c = "yellow", marker = "o", label = "Snake")
+    capture_text = ax.text(1.05,0.95,f"Captures", transform = ax.transAxes, color = "black", fontsize = 8, verticalalignment = "top")
+
+    snake_scatter = ax.scatter([],[], c = "red", label = "Snake")
+    prey_scatter = ax.scatter([], [], c = "yellow", label = "Prey")
+
+    ax.legend(loc = "upper right")
 
     for game_state in game_states:
 
@@ -239,13 +254,23 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
 
         # Mark prey positions
         prey_position = [ (prey[0], prey[1]) for prey in game_state['prey_positions']]
-        
+
         img.set_data(grid)
         
         snake_scatter.set_offsets([[snake_x, snake_y]])
 
         if prey_position:
             prey_scatter.set_offsets([(p[0], p[1]) for p in prey_position])
+            
+            # Add total capture per prey
+            capture_string = "\n".join(
+                f"Prey_ID {i}: {prey[-1]}times" for i, prey in enumerate(game_state['prey_positions'])
+            )
+        else:
+            prey_scatter.set_offsets([])
+            capture_string = ""
+            
+        capture_text.set_text("Captures:\n"+ capture_string)
 
         
 
@@ -274,6 +299,6 @@ if __name__ == "__main__":
 
     
 
-    print(game_data.head())
-    print(game_data.tail(10))
+    #print(game_data.head())
+    #print(game_data.tail(10))
     #print(game_data.summary())
