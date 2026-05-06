@@ -8,6 +8,8 @@ GRID_SIZE = 20
 NUM_PREY = 5
 STEPS = 50
 DEBUG = False
+SZ_SIZE = 4
+SZ_CAP = 3
 
 
 class Agent:
@@ -112,7 +114,7 @@ class Prey(Agent):
 
 
 class SafeZone:
-    def __init__(self, x, y, size = 4, capacity = 3):
+    def __init__(self, x, y, size = SZ_SIZE, capacity = SZ_CAP):
         # x,y represents bottom left corner of safe zone
         self.x = x
         self.y = y
@@ -181,19 +183,26 @@ class Game:
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
+
             sz.current_occupants = 0 # must reset in every step so that it keeps the current count and not total count
+
+            # Set safe zone to off as soon as snake is inside, even if snake spawned there. Alternatively prohibit snake from spawning in sz
+
+            if (sz.x<=self.snake.x<=sz.x+sz.size) and (sz.y<=self.snake.y<=sz.y+sz.size):
+                sz.active = False 
+
             for prey in self.prey_list:
                 if (sz.x<=prey.x<=sz.x+sz.size) and (sz.y<=prey.y<=sz.y+sz.size):
                     sz.current_occupants +=1
 
-                    if sz.active and sz.current_occupants >= sz.capacity:
-                        sz.active = False # Safe zone becomes inactive when capacity is reached.
-                    elif sz.active and sz.current_occupants < sz.capacity:
-                        pass # Safe zone is active and below capacity, nothing changes
-                    elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<=sz.x+sz.size and sz.y<=self.snake.y<=sz.y+sz.size):
-                        sz.active = True # Safe zone becomes active again when occupants are below capacity and snake is no longer inside the safe zone.
-                    else:
-                        pass # Safe zone is inactive and either occupants are above capacity or snake is still inside, nothing changes
+                if sz.active and sz.current_occupants >= sz.capacity:
+                    sz.active = False # Safe zone becomes inactive when capacity is reached.
+                elif sz.active and sz.current_occupants < sz.capacity:
+                    pass # Safe zone is active and below capacity, nothing changes
+                elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<=sz.x+sz.size and sz.y<=self.snake.y<=sz.y+sz.size):
+                    sz.active = True # Safe zone becomes active again when occupants are below capacity and snake is no longer inside the safe zone.
+                else:
+                    pass # Safe zone is inactive and either occupants are above capacity or snake is still inside, nothing changes
         
         # check captures
         for prey in self.prey_list:
@@ -245,7 +254,7 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
 
         # Mark safe zone
         for sz in game_state['safe_zone_status']:
-            grid[sz[0]:sz[0] + sz[2], sz[1]:sz[1] + sz[2]] = 3 if sz[3] else 0
+            grid[sz[0]:sz[0] + sz[2], sz[1]:sz[1] + sz[2]] = 3 if sz[3] else 1
 
         # Mark snake position
         # grid[game_state['snake_position'][0], game_state['snake_position'][1]] = 1 # No longer using grids because overlaps loses data
