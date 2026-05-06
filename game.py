@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 
 GRID_SIZE = 20
 NUM_PREY = 5
+STEPS = 50
+DEBUG = False
+
 
 class Agent:
     def __init__(self, x, y, speed = 1, symbol = 'A'):
@@ -39,9 +42,9 @@ class Snake(Agent):
         
         if closest_prey:
             if closest_prey.x > closest_prey.y:
-                return self.speed, 0
+                return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed,0)
             else:
-                return 0, self.speed
+                return (0, self.speed) if closest_prey.y>=self.y else (0, -self.speed)
         else:
             return 0, 0 # if there are no prey, stay in place - should not be the case since the game should end when all prey are captured
 
@@ -59,9 +62,12 @@ class Prey(Agent):
     def propose_move(self): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
         if self.learning:
             # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
-            dx = 0
-            dy = 0
-            pass  # action selection based on Q-table
+            if not DEBUG:
+                dx = 0
+                dy = 0
+                pass  # action selection based on Q-table
+            else:
+                dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
         else:
             dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
         
@@ -116,7 +122,7 @@ class Game:
     def __init__(self, grid_size = GRID_SIZE, num_prey = NUM_PREY):
         self.grid_size = grid_size
         self.snake = Snake(grid_size//2, grid_size//2)
-        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random())) for _ in range(num_prey)]
+        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random()<0.5)) for _ in range(num_prey)]
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         self.step_count = 0 # keep track of the number of steps taken in the game
     
@@ -131,6 +137,7 @@ class Game:
 
     def step(self):
         # snake moves
+        self.step_count+=1
         sdx,sdy = self.snake.chase(self.prey_list) # chase function determines the proposed move of the snake and game checks if the move is valid before executing it.
 
         proposed_snake_x = self.snake.x + sdx
@@ -165,6 +172,7 @@ class Game:
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
+            sz.current_occupants = 0 # must reset in every step so that it keeps the current count and not total count
             for prey in self.prey_list:
                 if (sz.x<=prey.x<=sz.x+sz.size) and (sz.y<=prey.y<=sz.y+sz.size):
                     sz.current_occupants +=1
@@ -192,7 +200,7 @@ class Game:
         data = {
             'step': self.step_count,
             'snake_position': (self.snake.x, self.snake.y),
-            'prey_positions': [(prey.x, prey.y, prey.alive) for prey in self.prey_list],
+            'prey_positions': [(prey.x, prey.y, prey.learning) for prey in self.prey_list],
             'safe_zone_status': [(sz.x, sz.y, sz.size, sz.active, sz.current_occupants) for sz in self.safe_zone]
         }
 
@@ -209,25 +217,63 @@ class Game:
 
 def visualize_game(game_states, grid_size = GRID_SIZE):
 
+    grid = np.zeros((grid_size, grid_size))
+    _, ax = plt.subplots()
+    img = ax.imshow(grid, cmap = 'tab20', vmin=0, vmax = 4, alpha = 0.5)
+
+    snake_scatter = ax.scatter([],[], c = "red", marker = 's', label = "Snake")
+    prey_scatter = ax.scatter([], [], c = "yellow", marker = "o", label = "Snake")
 
     for game_state in game_states:
-        grid = np.zeros((grid_size, grid_size))
 
-        # Mark snake position
-        grid[game_state['snake_position'][0], game_state['snake_position'][1]] = 1
-        # Mark prey positions
-        for prey in game_state['prey_positions']:
-            if prey[2]:  # prey.alive
-                grid[prey[0], prey[1]] = 2
-        
+        grid = np.zeros((grid_size, grid_size)) # grid to be used for environment and safezones only, kept here in case the safe zone needs to be updated
+
         # Mark safe zone
         for sz in game_state['safe_zone_status']:
-            grid[sz[0]:sz[0] + sz[2], sz[1]:sz[1] + sz[2]] = 3 if sz[3] else 4
+            grid[sz[0]:sz[0] + sz[2], sz[1]:sz[1] + sz[2]] = 3 if sz[3] else 0
+
+        # Mark snake position
+        # grid[game_state['snake_position'][0], game_state['snake_position'][1]] = 1 # No longer using grids because overlaps loses data
+        snake_x, snake_y = game_state['snake_position']
+
+
+        # Mark prey positions
+        prey_position = [ (prey[0], prey[1]) for prey in game_state['prey_positions']]
         
-        plt.imshow(grid, cmap = 'viridis', vmin=0, vmax = 4, alpha = 0.5)
+        img.set_data(grid)
+        
+        snake_scatter.set_offsets([[snake_x, snake_y]])
+
+        if prey_position:
+            prey_scatter.set_offsets([(p[0], p[1]) for p in prey_position])
+
+        
+
         plt.title(f'Snake Game Visualization: Step {game_state["step"]}')
 
         plt.pause(0.5)
     
     plt.show()
 
+    if DEBUG:
+        # overwrite JSON file
+        with open('game_log.json', 'w'):
+            pass
+
+
+if __name__ == "__main__":
+    game = Game()
+    for _ in range(STEPS):
+        snake, prey_list, safe_zone = game.step()
+        game.game_write_to_file()
+    
+    game_states = game.game_from_file('game_log.json')
+    game_data = pd.read_json('game_log.json', lines = True)
+
+    visualize_game(game_states)
+
+    
+
+    print(game_data.head())
+    print(game_data.tail(10))
+    #print(game_data.summary())
