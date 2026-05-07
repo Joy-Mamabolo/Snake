@@ -3,12 +3,13 @@ import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import sys
 
 GRID_SIZE = 20
 NUM_PREY = 5
 STEPS = 50
-DEBUG = False
-SZ_SIZE = 4
+DEBUG = True
+SZ_SIZE = 6
 SZ_CAP = 3
 
 
@@ -26,6 +27,11 @@ class Agent:
 class Snake(Agent):
     def __init__(self, x, y):
         super().__init__(x, y, speed=1, symbol = "S")
+
+        # Added for the purpose of considering predator and prey swaps as captures. Currently, this is not the case.
+        self.prev_x = GRID_SIZE//2 # initial snake spawn
+        self.prev_y = GRID_SIZE//2 # initial snake spawn
+
     
     def chase(self, prey_list):
 
@@ -50,11 +56,11 @@ class Snake(Agent):
                 # snake and prey are on the same horizontal line, but at different widths
                 return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed,0) # go right if prey is to the right, otherwise left
             elif closest_prey.x>closest_prey.y:
-                # when deciding whether to move vertically or horizontally, favour the shorter distance - y
-                return (0, self.speed) if closest_prey.y>=self.y else (0, -self.speed)
-            else:
-                # when deciding whether to move vertically or horizontally, favour the shorter distance - x
+                # when deciding whether to move vertically or horizontally, favour the larger distance - x
                 return (self.speed, 0) if closest_prey.x>=self.x else (-self.speed, 0)
+            else:
+                # when deciding whether to move vertically or horizontally, favour the larger distance - y
+                return (0, self.speed) if closest_prey.y>=self.y else (0, -self.speed)
         else:
             return 0, 0 # if there are no prey, stay in place - should not be the case since the game should end when all prey are captured
 
@@ -153,12 +159,18 @@ class Game:
         proposed_snake_x = self.snake.x + sdx
         proposed_snake_y = self.snake.y + sdy
 
+        #print(f"proposed_snake-x: {self.snake.x, sdx}\tproposed_snake_y: {self.snake.y, sdy}")
+
         if self.is_in_bounds(proposed_snake_x, proposed_snake_y):
-            if any((sz.active and sz.x <= proposed_snake_x <= sz.x + sz.size and sz.y <= proposed_snake_y <= sz.y + sz.size) for sz in self.safe_zone):
-                self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to condider other options later.
+            if any((sz.active and sz.x <= proposed_snake_x < sz.x + sz.size and sz.y <= proposed_snake_y < sz.y + sz.size) for sz in self.safe_zone):
+                #print("Safe Zone Entry prevention")
+                self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
+                self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to consider other options later.
             else:
+                self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
                 self.snake.move(sdx, sdy) # proposed move is valid, execute it
         else:
+            self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
             self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
 
         #prey
@@ -171,6 +183,11 @@ class Game:
                 prey.generation+=1
                 prey.alive = True
             
+
+            elif (prey.x == self.snake.x and prey.y == self.snake.y) or (prey.x == self.snake.prev_x and prey.y == self.snake.prev_y):
+                # Check captures
+                prey.alive = False
+                # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
             else:
                 # Prey moves
                 dx, dy = prey.propose_move()
@@ -188,28 +205,21 @@ class Game:
 
             # Set safe zone to off as soon as snake is inside, even if snake spawned there. Alternatively prohibit snake from spawning in sz
 
-            if (sz.x<=self.snake.x<=sz.x+sz.size) and (sz.y<=self.snake.y<=sz.y+sz.size):
+            if (sz.x<=self.snake.x<sz.x+sz.size) and (sz.y<=self.snake.y<sz.y+sz.size):
                 sz.active = False 
 
             for prey in self.prey_list:
-                if (sz.x<=prey.x<=sz.x+sz.size) and (sz.y<=prey.y<=sz.y+sz.size):
+                if (sz.x<=prey.x<sz.x+sz.size) and (sz.y<=prey.y<sz.y+sz.size):
                     sz.current_occupants +=1
 
                 if sz.active and sz.current_occupants >= sz.capacity:
                     sz.active = False # Safe zone becomes inactive when capacity is reached.
                 elif sz.active and sz.current_occupants < sz.capacity:
                     pass # Safe zone is active and below capacity, nothing changes
-                elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<=sz.x+sz.size and sz.y<=self.snake.y<=sz.y+sz.size):
+                elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<sz.x+sz.size and sz.y<=self.snake.y<sz.y+sz.size):
                     sz.active = True # Safe zone becomes active again when occupants are below capacity and snake is no longer inside the safe zone.
                 else:
                     pass # Safe zone is inactive and either occupants are above capacity or snake is still inside, nothing changes
-        
-        # check captures
-        for prey in self.prey_list:
-            if prey.x == self.snake.x and prey.y == self.snake.y:
-                prey.alive = False
-                
-                # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
 
 
         return self.snake, self.prey_list, self.safe_zone
@@ -239,12 +249,12 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
 
     grid = np.zeros((grid_size, grid_size))
     _, ax = plt.subplots()
-    img = ax.imshow(grid, cmap = 'tab20', vmin=0, vmax = 4, alpha = 0.5)
+    img = ax.imshow(grid, cmap = 'tab20', vmin=0, vmax = 4, alpha = 0.5, zorder = 1)
 
     capture_text = ax.text(1.05,0.95,f"Captures", transform = ax.transAxes, color = "black", fontsize = 8, verticalalignment = "top")
 
-    snake_scatter = ax.scatter([],[], c = "red", label = "Snake")
-    prey_scatter = ax.scatter([], [], c = "yellow", label = "Prey")
+    snake_scatter = ax.scatter([],[], c = "red", label = "Snake", zorder = 3)
+    prey_scatter = ax.scatter([], [], c = "yellow", label = "Prey", zorder = 2)
 
     ax.legend(loc = "upper right")
 
@@ -266,10 +276,10 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
 
         img.set_data(grid)
         
-        snake_scatter.set_offsets([[snake_x, snake_y]])
+        snake_scatter.set_offsets([[snake_y, snake_x]])
 
         if prey_position:
-            prey_scatter.set_offsets([(p[0], p[1]) for p in prey_position])
+            prey_scatter.set_offsets([(p[1], p[0]) for p in prey_position])
             
             # Add total capture per prey
             capture_string = "\n".join(
@@ -294,8 +304,16 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
         with open('game_log.json', 'w'):
             pass
 
+def main(no_steps = STEPS):
+    global STEPS 
+
+    STEPS = no_steps
 
 if __name__ == "__main__":
+    
+    if DEBUG:
+        main(int(sys.argv[1])) # To allow for quick changes in step counts during debugging
+    
     game = Game()
     for _ in range(STEPS):
         snake, prey_list, safe_zone = game.step()
