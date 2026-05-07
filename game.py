@@ -162,16 +162,55 @@ class Game:
         #print(f"proposed_snake-x: {self.snake.x, sdx}\tproposed_snake_y: {self.snake.y, sdy}")
 
         if self.is_in_bounds(proposed_snake_x, proposed_snake_y):
-            if any((sz.active and sz.x <= proposed_snake_x < sz.x + sz.size and sz.y <= proposed_snake_y < sz.y + sz.size) for sz in self.safe_zone):
-                #print("Safe Zone Entry prevention")
-                self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-                self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to consider other options later.
-            else:
-                self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-                self.snake.move(sdx, sdy) # proposed move is valid, execute it
+            for sz in self.safe_zone:
+                if (sz.active and sz.x <= proposed_snake_x < sz.x + sz.size and sz.y <= proposed_snake_y < sz.y + sz.size):
+                    #print("Safe Zone Entry prevention")
+                    self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
+                    # self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to consider other options later.
+                    # Alternative implementation of what happens after invalid move
+
+                    if self.snake.x ==sz.x or self.snake.x==sz.x+sz.size: 
+                        # stuck on left or right wall of safe zone, move either up or down
+                        if self.snake.y >= sz.y+sz.size//2:
+                            # more than half way up - go up (assuming wall is sketched from bottom left corner)
+                            self.snake.move(0,self.snake.speed)
+                        else:
+                            # less than half way up - go down
+                            self.snake.move(0, -self.snake.speed)
+                    else:
+                        # stuck on top or bottom wall of safe zone, move either left or right
+                        if self.snake.x >= sz.x+sz.size//2:
+                            # more than half way right, go right
+                            self.snake.move(self.snake.speed,0)
+                        else:
+                            # less than half way right, go left
+                            self.snake.move(-self.snake.speed, 0)
+                else:
+                    self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
+                    self.snake.move(sdx, sdy) # proposed move is valid, execute it
         else:
             self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-            self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
+            #self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
+
+            # Alternative motion instead of snake not moving - though I don't think this is a likely occurence
+            if self.snake.x ==0 or self.snake.x==self.grid_size-1: 
+                # stuck on left or right wall of safe zone, move either up or down
+
+                if self.snake.y >= self.grid_size//2:
+                    # more than half way up - go up (assuming wall is sketched from bottom left corner)
+                    self.snake.move(0,self.snake.speed)
+                else:
+                    # less than half way up - go down
+                    self.snake.move(0, -self.snake.speed)
+            else:
+                # stuck on top or bottom wall of safe zone, move either left or right
+
+                if self.snake.x >= self.grid_size//2:
+                    # more than half way right, go right
+                    self.snake.move(self.snake.speed,0)
+                else:
+                    # less than half way right, go left
+                    self.snake.move(-self.snake.speed, 0)
 
         #prey
         for prey in self.prey_list:
