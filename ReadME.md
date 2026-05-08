@@ -25,3 +25,29 @@ Visualization:
 > Matplotlib is currently being used for visuals.
 > The background and safezones are represented as a grid and drawn as a heatmap, while the agents (snake and prey) are plotted using the scatter function to allow for overlapping which heatmapping does not allow for in the current implementation.
 > The figure displays the step number and also displays the number of times particular prey have been captured using their prey_list indices as identifiers.
+
+Learning System:
+> Q-Learning using the Bellman Equation is used to improve prey decision making.
+> State definition: The prey observes information about other prey, the snake and its environment only within its immediate vicinity (i.e in a 3x3 grid in which it is centered). This information encodes details about the cell type (normal, active safe zone or inactive safe zone), occupants (empty, prey or snake), and boundary into a 27-character long string.
+    > The following characters are used to encode features in the prey's neighbourhood:
+        - "NN": normal cell type
+        - "O+": active safe zone cell
+        - "O-": inactive safe zone cell
+        - "P": prey
+        - "S": snake
+        - ".": empty cell/no occupant
+        - "XXX": boundary/wall
+> Reward profile - The following reward profile is being used and will be captured as global variables so that all changes can happen there should changes be required:
+    - capture : -10
+    - boundary collision: -5
+    - survival: +1
+    - survival in active safe-zone: +2
+
+
+> Quirks:
+    Unlike standard implementations where prey capture might end the episode, prey captures only cause respawns in this implementation. Episodes are governed by a total step count. This allows for uniform training opportunity for all learning prey and not have learning speed affected randomly.
+    As a result of the above, the capture reward may need to be tweaked as it is much more than what is currently stated. This is because the next_q value in the bellman equation cannot be determined (since the prey will respawn at a randomish location), nor should it be determined because that state has no bearing on the last action made. This means that next_q will evaluate to 0.0 when the update_q_table function is called after a capture.
+    This means that the Bellman Equation will simplify to {new_q = old_q + alpha*(reward - old_q)}; and since reward will be negative as well, the perceived consequence of a capture is even more severe.
+
+    This should be monitored to ensure it does not adversely affect learning progression.
+    
