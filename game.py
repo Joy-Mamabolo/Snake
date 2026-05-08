@@ -12,12 +12,6 @@ DEBUG = True
 SZ_SIZE = 6
 SZ_CAP = 3
 
-# Rewards
-CAPTURE = -10
-SURVIVOR = 1
-SAFE_SURVIVOR = 2
-BOUNDARY = -5
-
 
 class Agent:
     def __init__(self, x, y, speed = 1, symbol = 'A'):
@@ -76,78 +70,57 @@ class Prey(Agent):
         super().__init__(x, y, speed = 1, symbol="P")
         self.alive = True
         self.generation = 0 # generation of the prey - also used to track how many times the prey has been captured and respawned.
-        self.last_act = (int(0),int(0)) # This records the last move the prey proposed not the action enforced by the game class
-
+        
         self.learning = learning
 
         if learning:
             self.q_table = {} # State-action value table for Q-learning not implemented yet
-            #self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
+            self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
             self.alpha = 0.3
             self.gamma = 0.9
             self.epsilon = 0.1
-            self.old_state = ""
             
     
     def get_q(self, state, action):
         # Function takes q_table key consisting of a state string and action tuple, where the action is itself a tuple encoding
         # up, down, left, right using positive and negative binary digit combinations. if the dictionary key does not exist, it returns 0.0
-        # In a scenario where the prey agent is captured, the function must return a next_q value of 0.0, as it is not known at this stage where
-        # the prey will respawn
 
-        if self.alive:
-            try: 
-                return self.q_table[(state, action)]
-            
-            except KeyError:
-                # KeyError means that state and action combination do not exist in the current q-table. Update q-table and return 0.0
-
-                self.q_table[(state, action)] = 0.0
-
-                return 0.0
-            else:
-                print("Unknown Error involving q-table data extraction using key.")
-                raise UnboundLocalError
-        else:
-            # It is assumed that this will only be used for getting next_q after prey capture
-            return 0.0
-    
-    def update_q_table(self, state, action, reward, next_state = None):
-        old_q = self.get_q(state, action) #because of how get_q is defined, if state and action combination do not exist, they are created
+        try: 
+            return self.q_table[(state, action)]
         
-        if next_state:
-            next_q = max([self.get_q(next_state, a) for a in self.actions]) # Return the largest q-value (assuming optimal play)
+        except KeyError:
+            # KeyError means that state and action combination do not exist in the current q-table. Update q-table and return 0.0
+
+            self.q_table[(state, action)] = 0.0
+
+            return 0.0
         else:
-            next_q = 0.0
+            print("Unknown Error involving q-table data extraction using key.")
+            raise UnboundLocalError
+    
+    def update_q_table(self, state, action, reward, next_state):
+        old_q = self.get_q(state, action) #because of how get_q is defined, if state and action combination do not exist, they are created
+        next_q = max([self.get_q(next_state, a) for a in self.actions]) # Return the largest q-value (assuming optimal play)
 
         # Bellman Eq.
         new_q = old_q + self.alpha*(reward + self.gamma*next_q-old_q)
 
         self.q_table[(state, action)] = new_q
 
-    def observe(self, world, potential_act = (0,0)):
+    def observe(self, world):
         # This function defines how the prey observes the world. Characters are used to encode different things as follows:
         # Each cell contains 2 pieces of information: cell type and occupant
         # cell type can be either active safe zone ('O+'), inactive safe zone ('O-'), or empty ('.')
         # occupant will be 'P' for prey and 'S' for snake or "." for neither.
-        # walls will be encoded as 'XXX' in order to maintain consistent patterns and lengths.
+        # walls will be encoded as XXX in order to maintain consistent patterns and lengths.
         # Safe zone distance pointers will also be given representing closer, further or same
 
         # 3x3 grid around the prey
         neighbourhood = ""
-
-        # Modify observe so that it can provide next state as well as current state.
-        if potential_act == (0,0):
-            self_x = self.x
-            self_y = self.y
-        else:
-            self_x = self.x+potential_act[0]
-            self_y = self.y+potential_act[1]
-
         for dx in range(-1,2):
             for dy in range(-1,2):
-                nx = self_x + dx
-                ny = self_y+dy
+                nx = self.x + dx
+                ny = self.y +dy
 
                 if world.is_in_bounds(nx,ny):
                     # cell type:
@@ -174,12 +147,12 @@ class Prey(Agent):
         
         return neighbourhood 
     
-    def propose_move(self, world, potential = False): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
+    def propose_move(self, world): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
         if self.learning:
             # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
             
             # Observe
-            current_state = self.observe(world)
+            state = self.observe(world)
 
             # Determine if we consult q-table or explore using epsilon
             if random.random()<self.epsilon:
@@ -191,7 +164,7 @@ class Prey(Agent):
                 threshold = 0.0
 
                 for action in self.actions:
-                    q = self.get_q(current_state, action)
+                    q = self.get_q(state, action)
                     if q > threshold:
                         # Best move thus far
                         threshold = q # raise standard for best move
@@ -206,19 +179,12 @@ class Prey(Agent):
                 # Make final choice randomly if more than one decision possible
             if len(candidate)>1:
                 # more than one best move
-                last_act= random.choice(candidate)
+                return random.choice(candidate)
             else:
                 # Only one answer
-                last_act= candidate[0] # tuple not list
-            
-            if not potential:
-                return last_act, current_state
-            else:
-                return last_act, self.observe(world,last_act)
+                return candidate[0] # tuple not list
         else:
-            last_act =  random.choice(self.actions)
-        
-        return last_act, ""
+            return random.choice(self.actions)
 
 class SafeZone:
     def __init__(self, x, y, size = SZ_SIZE, capacity = SZ_CAP):
@@ -322,49 +288,21 @@ class Game:
                 prey.y = 0 if self.snake.y>self.grid_size-1-self.snake.y else self.grid_size-1
                 prey.generation+=1
                 prey.alive = True
-                prey.last_act = (0,0) # reset last act. It has already been used to update q table in the previous generation.
             
 
             elif (prey.x == self.snake.x and prey.y == self.snake.y) or (prey.x == self.snake.prev_x and prey.y == self.snake.prev_y):
-                # Prey captured
+                # Check captures
                 prey.alive = False
-
-                # update q-table with capture reward
-                prey.update_q_table(prey.old_state,prey.last_act,CAPTURE) # omit next_state since it will evaluate next_q to 0.0 by default as the next state after capture cannot be confirmed.
-                
                 # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
             else:
                 # Prey moves
-
-                if prey.learning:
-                    #Reward survival first:
-                    if prey.last_act != (0,0):
-                        # Not initial spawn or respawn, meaning prey survived
-                        # update q-table showing survival before new observation in propose_move updates the current_state
-                        act, next_state = prey.propose_move(self, True)
-
-                        prey.update_q_table(prey.old_state,prey.last_act,SAFE_SURVIVOR if "+" in prey.old_state else SURVIVOR,next_state)
-
-                        # update last act
-                        prey.last_act = act
-                    else:
-                        pass # No reward for respawning or new spawn.
-
-                else:
-                    prey.last_act,_ = prey.propose_move(self)
-                
-                dx,dy = prey.last_act
+                dx, dy = prey.propose_move(self)
 
                 if self.is_in_bounds(prey.x + dx, prey.y + dy):
-                    # Cannot assign reward here because it is possible that this move results in capture
                     prey.move(dx, dy, grid_size = self.grid_size)
-
-                    # update old_state to actual current state and not potential as was the case for next state
-                    prey.old_state = prey.observe(self)
                 else:
                     prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
-                    
-                    prey.update_q_table(prey.old_state, prey.last_act,BOUNDARY, prey.old_state) # next state is the same as old state since prey does not move.
+                    prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey. 
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
@@ -422,7 +360,7 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     capture_text = ax.text(1.05,0.95,f"Captures", transform = ax.transAxes, color = "black", fontsize = 8, verticalalignment = "top")
 
     snake_scatter = ax.scatter([],[], c = "red", label = "Snake", zorder = 3)
-    prey_scatter = ax.scatter([], [], c = ["yellow"], label = "Prey", zorder = 2)
+    prey_scatter = ax.scatter([], [],label = "Prey", zorder = 2)
 
     ax.legend(loc = "upper right")
 
@@ -452,9 +390,6 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
             new_colors = ["yellow" if not p[2] else "green" for p in game_state['prey_positions']]
             prey_scatter.set_facecolor(new_colors)
             
-            #Todo: Update legend to reflect learning and non-learning prey 
-
-
             # Add total capture per prey
             capture_string = "\n".join(
                 f"Prey_ID {i}: {prey[-1]}times" for i, prey in enumerate(game_state['prey_positions'])
