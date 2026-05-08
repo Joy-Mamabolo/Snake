@@ -213,7 +213,7 @@ class Game:
         for safe_zone in self.safe_zone:
             if (safe_zone.x<=x<=safe_zone.x+safe_zone.size) and (safe_zone.y<=y<=safe_zone.y+safe_zone.size):
                 return (True, safe_zone.active)
-        return False
+        return False, None
 
     def is_in_bounds(self, x, y):
         return False if x < 0 or x >= self.grid_size or y < 0 or y >= self.grid_size else True
@@ -360,7 +360,7 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     capture_text = ax.text(1.05,0.95,f"Captures", transform = ax.transAxes, color = "black", fontsize = 8, verticalalignment = "top")
 
     snake_scatter = ax.scatter([],[], c = "red", label = "Snake", zorder = 3)
-    prey_scatter = ax.scatter([], [], c = "yellow", label = "Prey", zorder = 2)
+    prey_scatter = ax.scatter([], [],label = "Prey", zorder = 2)
 
     ax.legend(loc = "upper right")
 
@@ -386,6 +386,9 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
 
         if prey_position:
             prey_scatter.set_offsets([(p[1], p[0]) for p in prey_position])
+
+            new_colors = ["yellow" if not p[2] else "green" for p in game_state['prey_positions']]
+            prey_scatter.set_facecolor(new_colors)
             
             # Add total capture per prey
             capture_string = "\n".join(
