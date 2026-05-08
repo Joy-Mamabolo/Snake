@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import sys
 
 GRID_SIZE = 20
-NUM_PREY = 5
+NUM_PREY = 6
 STEPS = 50
 DEBUG = True
 SZ_SIZE = 6
@@ -19,6 +19,7 @@ class Agent:
         self.y = y
         self.speed = speed
         self.symbol = symbol
+        self.actions = [(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)] #Up, Down, Right, Left
     
     def move(self, dx, dy, grid_size = GRID_SIZE):
         self.x = max(0, min(grid_size-1, self.x + dx*self.speed))
@@ -71,53 +72,119 @@ class Prey(Agent):
         self.generation = 0 # generation of the prey - also used to track how many times the prey has been captured and respawned.
         
         self.learning = learning
-        self.q_table = {} if learning else None # State-action value table for Q-learning not implemented yet
-        self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
-        
-    
-    def propose_move(self): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
-        if self.learning:
-            # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
-            if not DEBUG:
-                dx = 0
-                dy = 0
-                pass  # action selection based on Q-table
-            else:
-                dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
-        else:
-            dx, dy = random.choice([(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)])
-        
-        return dx, dy
-    
-    def observe(self, world):
-        # This function defines how the prey observes the world 
 
-        obs = {}
+        if learning:
+            self.q_table = {} # State-action value table for Q-learning not implemented yet
+            self.reward = 0 # reward received in the current step, used for learning prey. Not implemented yet
+            self.alpha = 0.3
+            self.gamma = 0.9
+            self.epsilon = 0.1
+            
+    
+    def get_q(self, state, action):
+        # Function takes q_table key consisting of a state string and action tuple, where the action is itself a tuple encoding
+        # up, down, left, right using positive and negative binary digit combinations. if the dictionary key does not exist, it returns 0.0
+
+        try: 
+            return self.q_table[(state, action)]
+        
+        except KeyError:
+            # KeyError means that state and action combination do not exist in the current q-table. Update q-table and return 0.0
+
+            self.q_table[(state, action)] = 0.0
+
+            return 0.0
+        else:
+            print("Unknown Error involving q-table data extraction using key.")
+            raise UnboundLocalError
+    
+    def update_q_table(self, state, action, reward, next_state):
+        old_q = self.get_q(state, action) #because of how get_q is defined, if state and action combination do not exist, they are created
+        next_q = max([self.get_q(next_state, a) for a in self.actions]) # Return the largest q-value (assuming optimal play)
+
+        # Bellman Eq.
+        new_q = old_q + self.alpha*(reward + self.gamma*next_q-old_q)
+
+        self.q_table[(state, action)] = new_q
+
+    def observe(self, world):
+        # This function defines how the prey observes the world. Characters are used to encode different things as follows:
+        # Each cell contains 2 pieces of information: cell type and occupant
+        # cell type can be either active safe zone ('O+'), inactive safe zone ('O-'), or empty ('.')
+        # occupant will be 'P' for prey and 'S' for snake or "." for neither.
+        # walls will be encoded as XXX in order to maintain consistent patterns and lengths.
+        # Safe zone distance pointers will also be given representing closer, further or same
 
         # 3x3 grid around the prey
-        neighbourhood = []
+        neighbourhood = ""
         for dx in range(-1,2):
             for dy in range(-1,2):
                 nx = self.x + dx
                 ny = self.y +dy
 
-                if 0 <= nx < world.grid_size and 0 <= ny < world.grid_size:
-                    if world.snake.x == nx and world.snake.y == ny:
-                        neighbourhood.append('S')
-                    elif any(prey.x == nx and prey.y == ny for prey in world.prey_list):
-                        neighbourhood.append('P')
-                    else:
-                        neighbourhood.append('.')
-                else:
-                    neighbourhood.append('X') # Out of bounds
-        
-        obs['neighbourhood'] = tuple(neighbourhood)
-        obs['in_safe_zone'] = world.is_in_safe_zone(self)
-        obs['neighbour_count'] = sum(1 for cell in neighbourhood if cell == 'P')
-        obs['distance_to_safe_zone'] = abs(self.x - world.safe_zone[0].x) + abs(self.y - world.safe_zone[0].y) # Only determines distance to the first safe zone. Must change it once there are more than one
-        
-        return obs
+                if world.is_in_bounds(nx,ny):
+                    # cell type:
+                    in_sz, sz_active = world.is_in_safe_zone(nx,ny)
 
+                    if in_sz:
+                        if sz_active:
+                            neighbourhood+="O+"
+                        else:
+                            neighbourhood+="O-"
+                    else:
+                        # normal cell type encoded with "NN" for normal, and doubled to maintain consistent length with other cell type
+                        neighbourhood+="NN"
+
+                    # Occupant type
+                    if world.snake.x == nx and world.snake.y == ny:
+                        neighbourhood+="S"
+                    elif any(prey.x == nx and prey.y == ny for prey in world.prey_list):
+                        neighbourhood+='P'
+                    else:
+                        neighbourhood+='.'
+                else:
+                    neighbourhood+='XXX'# Out of bounds
+        
+        return neighbourhood 
+    
+    def propose_move(self, world): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
+        if self.learning:
+            # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
+            
+            # Observe
+            state = self.observe(world)
+
+            # Determine if we consult q-table or explore using epsilon
+            if random.random()<self.epsilon:
+                # Be adventurous, explore - ignore q-table and make a random move
+                candidate = [random.choice(self.actions)] # made it a list for consistency
+            else:
+                # Be principled - consult your q-table
+                candidate = [(0,0)] # default value although it should not be necessary 
+                threshold = 0.0
+
+                for action in self.actions:
+                    q = self.get_q(state, action)
+                    if q > threshold:
+                        # Best move thus far
+                        threshold = q # raise standard for best move
+                        candidate = [action] # Erase previous moves if there were any
+                    elif q == threshold:
+                        # One of the best moves, choose any
+                        candidate.append(action)
+                    else:
+                        # Not good enough
+                        pass
+
+                # Make final choice randomly if more than one decision possible
+            if len(candidate)>1:
+                # more than one best move
+                return random.choice(candidate)
+            else:
+                # Only one answer
+                return candidate[0] # tuple not list
+        else:
+            return random.choice(self.actions)
 
 class SafeZone:
     def __init__(self, x, y, size = SZ_SIZE, capacity = SZ_CAP):
@@ -142,10 +209,10 @@ class Game:
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         self.step_count = 0 # keep track of the number of steps taken in the game
     
-    def is_in_safe_zone(self, prey):
+    def is_in_safe_zone(self, x, y):
         for safe_zone in self.safe_zone:
-            if (safe_zone.x<=prey.x<=safe_zone.x+safe_zone.size) and (safe_zone.y<=prey.y<=safe_zone.y+safe_zone.size):
-                return True
+            if (safe_zone.x<=x<=safe_zone.x+safe_zone.size) and (safe_zone.y<=y<=safe_zone.y+safe_zone.size):
+                return (True, safe_zone.active)
         return False
 
     def is_in_bounds(self, x, y):
@@ -212,7 +279,7 @@ class Game:
                     # less than half way right, go left
                     self.snake.move(-self.snake.speed, 0)
 
-        #prey
+        #prey moves/acts
         for prey in self.prey_list:
             
             if not prey.alive:
@@ -229,7 +296,7 @@ class Game:
                 # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
             else:
                 # Prey moves
-                dx, dy = prey.propose_move()
+                dx, dy = prey.propose_move(self)
 
                 if self.is_in_bounds(prey.x + dx, prey.y + dy):
                     prey.move(dx, dy, grid_size = self.grid_size)
