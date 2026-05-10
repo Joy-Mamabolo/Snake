@@ -1,0 +1,135 @@
+Snake ML-Data Science Project
+
+Game Loop
+
+Agent: Observe -> Decide -> Game Determines -> Agent Learns
+
+Map algorithm for the following prey reward scenarios:
+A. Spawn -> Move into boundary
+B. A -> Captured (i.e. prey spawned, moved into a boundary and was immediately captured)
+C. B -> Respawn -> move to normal square -> Captured
+D. Spawn -> move to safe zone square
+E. Spawn -> move to normal square -> move to safe zone square -> move to normal square - >captured
+F. Spawn -> move to safe zone square -> safe zone deactivates -> move in deactivated safe zone square -> Captured
+
+
+A. Spawn -> Move into boundary
+1. Create prey object when game object is created
+2. Run step function
+----- inside step function as it relates to prey learning (skip other processes) ----
+3. Loop through prey list
+4. Check if prey is alive? Yes, it is a new spawn --> Skip block
+5. Check if prey has been captured? No, prey has not been captured --> skip block
+6. Prey will now propose a move
+6.1. Is prey learning? Yes
+6.1.1 is pre.last_act != (0,0)? i.e. is it a new spawn? Yes it is --> skip block. No reward due
+6.1 Fix 1: New Spawns were not proposing moves. --> update prey.last_act with move proposal
+> inside propose move:
+	a) is prey learning? Yes
+	b) current_state = observe() --> 
+		b)a) potential_act ==(0,0)? Yes. run observe around the actual position of 						prey
+		b)b) return string with wall in it such as: "XXXXXXXXXNN.PNN.NN.NN.NN."
+		     which is a prey at the top edge of the map with no neighbours and only 		     surrounded normal cells.
+		b)c) feed result into current state
+	c) decision is made randomly or by q-table to go up into the wall.
+	d) if not potential? not False is True, so yes: return last_act and current state
+6.2 Assign result of propose new move to prey.last_act (update it) and do nothing with the string. Fix: update prey.old_state with the string here!!
+7. Move has been proposed and stored in dx, dy and will now be evaluated and executed
+7.1 is move in bounds? False
+7.2 Force prey to remain stationary as prey.move(0,0) is called
+
+8. Update q table:
+check if all parameters are present:
+	> prey.old_state? Not defined. Fix bug: 
+	  prev.old_state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+	> prey.last_act? Present
+	> BOUNDARY? globally defined
+	> prey.old_state again? yes - refer to above.
+8.1 Inside update_q_table function:
+	> state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+	> action = (0,1)
+	> reward = -5
+	> next_state = "XXXXXXXXXNN.PNN.NN.NN.NN." # next state is the same as previous 			state since the prey will not move
+
+8.2 Determine old_q by calling get_q function which takes state and action
+	> since this is a new spawn, the result will be 0.0, but for completeness, step will be completed.
+		> ---inside get_q function which takes state and action:
+		> is prey alive? Yes
+		> extract "XXXXXXXXXNN.PNN.NN.NN.NN.", (0,1) from q_table
+			> error. q_table is empty
+			> except keyError? Yes
+				> add q_table entry and assign score of 0.0
+				> return 0.0
+	> old_q = 0.0
+8.3 is next_State given? Yes
+8.3.1 determine next_q
+	> call get_q but apply all possible actions
+	> Outcome will be that q_table dictionary will be populated with new 			  entries that include all 4 possible actions, but since they did not 			  previously exist, the outcome is 0.0 for all of them.
+	> update q-table
+	> next_q = 0.0
+	
+8.4. Determine new_q = 0.0 + 0.3*(-5 + 0.9*0.0-0.0) = -1.5
+8.5 update q_table with new_q at state and action
+>>>>>>>>>>>>>>>>>>>>>>>> Process complete and should be working fine with the bug fix <<<<<<<<<<<<<<<<<<<
+
+B. A -> Captured
+ ---Inside the step function -----
+1. Assume snake moves and the move is legal. Snake movement is not an issue and has been tested thus far.
+2. Prey moves
+2.1 Is prey alive? Yes - skip block
+2.2 is prey captured? i.e. prey.x == snake.x and prey.y == snake.y or they swapped positions? Yes
+2.2.1 Set prey.alive to False
+2.2.2 Update q_table:
+	> prey.old_state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+	> prey.last_act = (0,1)
+	> CAPTURE? Globally defined: -10
+2.2.2.1 ---- Inside update_q_table function -----
+	> state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+	> action = (0,1)
+	> reward = -10
+	> next_state = None
+	
+2.2.2.2 Get old_q:
+		--- inside get_q function ---
+		> state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+		> action = (0,1)
+
+		> is prey alive? No - assign 0.0 Bug - it was assumed that only next_q after prey capture would be here, but this is not the case because of where prey.alive is positioned. Try repositioning prey.alive. --> Accepted the bug fix!
+		> Fix: is prey alive? Yes --> return q_table value = -1.5
+		> old_q = -1.5
+2.2.2.3 is next_state? No --> next_q = 0.0 (next_q is arbitrary and irrelevant at capture)
+2.2.2.4 new_q = -1.5 + 0.3*(-10+0.9*0.0-(-1.5)) = -1.5 -3 +0.45 = -4.05
+2.2.2.5 update q_table
+>>>>>>>>>>>>>>>>>>>>>>>>>>> Process completed and should be working fine with the bug fix <<<<<<<<<<<<<<<<
+C. B -> Respawn -> move to normal square -> Captured
+---- inside game.step() ---
+1. Respawn:
+1.1 Snake moves - irrelevant for now
+1.2. Prey moves/acts
+1.2.1 Is not prey.alive? not False --> True
+	> Respawn captured prey. Set prey.x and prey. y to the furthest distance from snake
+	> set prey to alive
+	> set last_act = (0,0)
+2. Prey moves to normal square:
+2.1. Snake moves -- irrelevant for now
+2.2. Prey moves/acts:
+2.2.1 is not prey.alive? not True --> false, skip block
+2.2.2 is prey captured? No, skip block
+2.2.3 Prey must move then
+2.2.3.1 is prey learning - Yes
+2.2.3.2 is prey.last_act !=(0,0)? It is, so False - skip block (no reward for respawning)
+2.2.3.3. assign prey.last_act and prey.old_state the outcome of propose move
+	--- Inside propose move ----
+	> prey is learning, yes
+	> current_state = self.observe()
+		---- inside observe function -- 
+		> neighbourhood = ""
+		> potential_act = (0,0) --> therefore self_x, self_y = prey.x, prey.y (0,0)
+	
+		> assume this is in the bottom-left corner, the resulting string will be:
+			> "XXXNN.NN.XXXNNPNN.XXXXXXXXX"
+
+
+		
+			
+

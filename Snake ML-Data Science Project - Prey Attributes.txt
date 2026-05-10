@@ -1,0 +1,19 @@
+Prey attributes:
+self.alive = True
+self.generation = 0
+self.last_act = (0,1)
+self.learning = True
+
+self.q_table = {"XXXXXXXXXNN.PNN.NN.NN.NN.", (0,1): -1.5,
+		"XXXXXXXXXNN.PNN.NN.NN.NN.", (0,-1): 0.0,
+		"XXXXXXXXXNN.PNN.NN.NN.NN.", (1,0): 0.0,
+		"XXXXXXXXXNN.PNN.NN.NN.NN.", (-1,0): 0.0}
+self.alpha = 0.3
+self.gamma = 0.9
+self.epsilon = 0.1
+self.old_state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+
+Variables:
+current_state = "XXXXXXXXXNN.PNN.NN.NN.NN."
+dx = 0
+dy = 1
