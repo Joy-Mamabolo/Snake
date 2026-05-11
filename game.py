@@ -4,11 +4,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import sys
+import matplotlib.lines as mlines
 
 GRID_SIZE = 20
 NUM_PREY = 6
-STEPS = 50
-DEBUG = True
+STEPS = 200
+DEBUG = False
 SZ_SIZE = 6
 SZ_CAP = 3
 
@@ -107,7 +108,7 @@ class Prey(Agent):
 
         self.q_table[(state, action)] = new_q
 
-    def observe(self, world):
+    def observe(self, world): # potential_act is no longer necessary as the function is only used to observe the current state and not potential next states.
         # This function defines how the prey observes the world. Characters are used to encode different things as follows:
         # Each cell contains 2 pieces of information: cell type and occupant
         # cell type can be either active safe zone ('O+'), inactive safe zone ('O-'), or empty ('.')
@@ -117,10 +118,12 @@ class Prey(Agent):
 
         # 3x3 grid around the prey
         neighbourhood = ""
+
+        # Modify observe so that it can provide next state as well as current state. -- Reverted back to the original implementation.
         for dx in range(-1,2):
             for dy in range(-1,2):
                 nx = self.x + dx
-                ny = self.y +dy
+                ny = self.y+ dy
 
                 if world.is_in_bounds(nx,ny):
                     # cell type:
@@ -147,7 +150,7 @@ class Prey(Agent):
         
         return neighbourhood 
     
-    def propose_move(self, world): # This function defines how the prey moves randomly in the environment. This will be used for the non-learning prey in the long term, but for the learning prey, this will be replaced by a Q-table based action selection function.
+    def propose_move(self, world): # Function is used to propose a move for prey agents. It no longer computes potential next states, and thus does not need the potential_act argument anymore.
         if self.learning:
             # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
             
@@ -160,7 +163,7 @@ class Prey(Agent):
                 candidate = [random.choice(self.actions)] # made it a list for consistency
             else:
                 # Be principled - consult your q-table
-                candidate = [(0,0)] # default value although it should not be necessary 
+                candidate = [(0,0)] # default value although it should not be necessary  TODO: Remove default candidate value. It is guaranteed that there will be at least one action with a q-value of at least 0.0
                 threshold = 0.0
 
                 for action in self.actions:
@@ -182,7 +185,9 @@ class Prey(Agent):
                 return random.choice(candidate)
             else:
                 # Only one answer
-                return candidate[0] # tuple not list
+                last_act= candidate[0] # tuple not list
+            
+            return last_act, current_state
         else:
             return random.choice(self.actions)
 
@@ -291,18 +296,53 @@ class Game:
             
 
             elif (prey.x == self.snake.x and prey.y == self.snake.y) or (prey.x == self.snake.prev_x and prey.y == self.snake.prev_y):
-                # Check captures
-                prey.alive = False
+                # Prey captured
+
+                if prey.learning:
+                    # update q-table with capture reward for only learning prey
+                    prey.update_q_table(prey.old_state,prey.last_act,CAPTURE) # omit next_state since it will evaluate next_q to 0.0 by default as the next state after capture cannot be confirmed.
+                
+                prey.alive = False # repositioned to after update_q_table
+
                 # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
             else:
                 # Prey moves
-                dx, dy = prey.propose_move(self)
+
+                if prey.learning:
+                    #Reward survival first:
+                    if prey.last_act != (0,0):
+                        # Not initial spawn or respawn, meaning prey survived
+                        # update q-table showing survival before new observation in propose_move updates the current_state
+                        #act, next_state = prey.propose_move(self, True) # A new move is not actually meant to be proposed yet. In order to define next_state, we only need to evaluate the state now after the prey has moved which is not the same as the prey.old_state.
+                        next_state = prey.observe(self) # This is the next state after surviving the last action, but before proposing the next action. It is used to update the q-table with the survival reward for the last action. The proposed move is not actually executed until after the q-table update.
+
+                        prey.update_q_table(prey.old_state,prey.last_act,SAFE_SURVIVOR if "+" in prey.old_state else SURVIVOR,next_state)
+
+                        # update last act
+                        # prey.last_act = act moved out of here to preserve the reward update functionality only and not mix it with action proposal.
+
+                    else:
+                        # new spawn or respawn about to move for the first time.
+                        pass # no reward
+
+                    prey.last_act,prey.old_state = prey.propose_move(self) # Now applies to all learning prey whether it is the first move after spawn/respawn or not.
+
+                else:
+                    prey.last_act,_ = prey.propose_move(self)
+                
+                dx,dy = prey.last_act
 
                 if self.is_in_bounds(prey.x + dx, prey.y + dy):
                     prey.move(dx, dy, grid_size = self.grid_size)
+
+                    # update old_state to actual current state and not potential as was the case for next state
+                    # prey.old_state = prey.observe(self) # This is not supposed to be updated here as it overwrites the old_state that is meant to be used for the reward update after the move is executed. When it is going to be updated will be confirmed.
                 else:
                     prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
-                    prey.reward = -1 # negative reward for trying to move out of bounds. This is for learning prey. 
+                    prey.last_act = (0,0) # reset last act since the proposed move was not executed. This also prevents the prey from being rewarded for a move that was not actually executed.
+                    
+                    if prey.learning:
+                        prey.update_q_table(prey.old_state, prey.last_act,BOUNDARY, prey.old_state) # next state is the same as old state since prey does not move.
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
@@ -362,7 +402,12 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     snake_scatter = ax.scatter([],[], c = "red", label = "Snake", zorder = 3)
     prey_scatter = ax.scatter([], [],label = "Prey", zorder = 2)
 
-    ax.legend(loc = "upper right")
+    # placeholder markers for legend update to reflect learning and non-learning prey
+    learning_prey_marker = ax.scatter([],[], color = "green", marker = "o", label = "Prey (Learning)")
+    non_learning_prey_marker = ax.scatter([],[], color = "yellow", marker = "o", label = "Prey (Non-learning)")
+
+
+    ax.legend(handles = [snake_scatter, learning_prey_marker, non_learning_prey_marker],loc = "upper right", labels = ["Snake", "Prey (Learning)", "Prey (Non-learning)"])
 
     for game_state in game_states:
 
