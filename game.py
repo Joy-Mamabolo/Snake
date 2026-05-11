@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import sys
+import matplotlib.lines as mlines
 
 GRID_SIZE = 20
 NUM_PREY = 6
@@ -182,7 +183,7 @@ class Prey(Agent):
                 candidate = [random.choice(self.actions)] # made it a list for consistency
             else:
                 # Be principled - consult your q-table
-                candidate = [(0,0)] # default value although it should not be necessary 
+                candidate = [(0,0)] # default value although it should not be necessary  TODO: Remove default candidate value. It is guaranteed that there will be at least one action with a q-value of at least 0.0
                 threshold = 0.0
 
                 for action in self.actions:
@@ -321,8 +322,10 @@ class Game:
 
             elif (prey.x == self.snake.x and prey.y == self.snake.y) or (prey.x == self.snake.prev_x and prey.y == self.snake.prev_y):
                 # Prey captured
-                # update q-table with capture reward
-                prey.update_q_table(prey.old_state,prey.last_act,CAPTURE) # omit next_state since it will evaluate next_q to 0.0 by default as the next state after capture cannot be confirmed.
+
+                if prey.learning:
+                    # update q-table with capture reward for only learning prey
+                    prey.update_q_table(prey.old_state,prey.last_act,CAPTURE) # omit next_state since it will evaluate next_q to 0.0 by default as the next state after capture cannot be confirmed.
                 
                 prey.alive = False # repositioned to after update_q_table
 
@@ -362,8 +365,10 @@ class Game:
                     # prey.old_state = prey.observe(self) # This is not supposed to be updated here as it overwrites the old_state that is meant to be used for the reward update after the move is executed. When it is going to be updated will be confirmed.
                 else:
                     prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
+                    prey.last_act = (0,0) # reset last act since the proposed move was not executed. This also prevents the prey from being rewarded for a move that was not actually executed.
                     
-                    prey.update_q_table(prey.old_state, prey.last_act,BOUNDARY, prey.old_state) # next state is the same as old state since prey does not move.
+                    if prey.learning:
+                        prey.update_q_table(prey.old_state, prey.last_act,BOUNDARY, prey.old_state) # next state is the same as old state since prey does not move.
         
         # check safe zone admissions
         for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
@@ -423,7 +428,12 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     snake_scatter = ax.scatter([],[], c = "red", label = "Snake", zorder = 3)
     prey_scatter = ax.scatter([], [], c = ["yellow"], label = "Prey", zorder = 2)
 
-    ax.legend(loc = "upper right")
+    # placeholder markers for legend update to reflect learning and non-learning prey
+    learning_prey_marker = ax.scatter([],[], color = "green", marker = "o", label = "Prey (Learning)")
+    non_learning_prey_marker = ax.scatter([],[], color = "yellow", marker = "o", label = "Prey (Non-learning)")
+
+
+    ax.legend(handles = [snake_scatter, learning_prey_marker, non_learning_prey_marker],loc = "upper right", labels = ["Snake", "Prey (Learning)", "Prey (Non-learning)"])
 
     for game_state in game_states:
 
@@ -451,8 +461,8 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
             new_colors = ["yellow" if not p[2] else "green" for p in game_state['prey_positions']]
             prey_scatter.set_facecolor(new_colors)
             
-            #Todo: Update legend to reflect learning and non-learning prey 
-
+            # TODO: Update legend to reflect learning and non-learning prey 
+            # plt.legend(loc = "upper right", labels = ["Snake", "Prey (Non-learning)", "Prey (Learning)"])
 
             # Add total capture per prey
             capture_string = "\n".join(
