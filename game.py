@@ -7,7 +7,7 @@ import sys
 
 GRID_SIZE = 20
 NUM_PREY = 6
-STEPS = 200
+STEPS = 200000
 DEBUG = False
 SZ_SIZE = 6
 SZ_CAP = 3
@@ -233,7 +233,7 @@ class Game:
     def __init__(self, grid_size = GRID_SIZE, num_prey = NUM_PREY):
         self.grid_size = grid_size
         self.snake = Snake(grid_size//2, grid_size//2)
-        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random()<0.5)) for _ in range(num_prey)]
+        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random()<0.7)) for _ in range(num_prey)]
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         self.step_count = 0 # keep track of the number of steps taken in the game
     
@@ -416,7 +416,11 @@ class Game:
         return game_states
 
 
-def visualize_game(game_states, grid_size = GRID_SIZE):
+def visualize_game(game_states, grid_size = GRID_SIZE,seek = 0, step_interval = STEPS):
+
+    # the use of seek and step interval will allow for the game to be viewed at an arbitrary point. This will be useful when game steps become excessively large.
+    if seek !=0 and step_interval == STEPS:
+        step_interval = STEPS-seek # this to handle the default case where step_interval is not defined but SEEK is defined, in which case we want to visualize from SEEK to the end of the game.
 
     grid = np.zeros((grid_size, grid_size))
     _, ax = plt.subplots()
@@ -432,9 +436,9 @@ def visualize_game(game_states, grid_size = GRID_SIZE):
     non_learning_prey_marker = ax.scatter([],[], color = "yellow", marker = "o", label = "Prey (Non-learning)")
 
 
-    ax.legend(handles = [snake_scatter, learning_prey_marker, non_learning_prey_marker],loc = "upper right", labels = ["Snake", "Prey (Learning)", "Prey (Non-learning)"])
+    ax.legend(handles = [snake_scatter, learning_prey_marker, non_learning_prey_marker],loc = "upper right", labels = ["Snake", "Prey (Learning)", "Prey (Non-learning)"], framealpha = 0.3)
 
-    for game_state in game_states:
+    for game_state in game_states[seek:seek+step_interval]:
 
         grid = np.zeros((grid_size, grid_size)) # grid to be used for environment and safezones only, kept here in case the safe zone needs to be updated
 
@@ -496,15 +500,51 @@ if __name__ == "__main__":
     if DEBUG:
         main(int(sys.argv[1])) # To allow for quick changes in step counts during debugging
     
-    game = Game()
-    for _ in range(STEPS):
-        snake, prey_list, safe_zone = game.step()
-        game.game_write_to_file()
-    
-    game_states = game.game_from_file('game_log.json')
-    game_data = pd.read_json('game_log.json', lines = True)
+    mode = input("Enter 1 to play the game, 2 to visualize a past game: ")
 
-    visualize_game(game_states)
+    if mode == "1":
+        # New simulation and visualization
+        print("Starting new game simulation...")
+        game = Game()
+        for _ in range(STEPS):
+            snake, prey_list, safe_zone = game.step()
+            game.game_write_to_file()
+        
+        game_states = game.game_from_file('game_log.json')
+        game_data = pd.read_json('game_log.json', lines = True)
+
+        print("Game simulation completed. Starting Visualization...")
+
+        seek = int(input(f"Enter the step number to seek to (0 - {len(game_states)-1}) or -1 to run through all: "))
+        
+        if seek == -1:
+            visualize_game(game_states)
+        else:
+            interval = int(input(f"Enter the number of steps to visualize from the seek point (1 - {len(game_states) - seek}): "))
+            visualize_game(game_states, seek = seek, step_interval = interval)
+
+    else:
+        # Visualization of past game from file. This is for analysis and debugging purposes, not for resuming a game.
+        print("Visualizing past game from file...")
+        game = Game() # dummy game instance to access the game_from_file method. This can be refactored later to avoid the need for a dummy instance.
+        try:
+            game_states = game.game_from_file('game_log.json')
+            game_data = pd.read_json('game_log.json', lines = True)
+            seek = int(input(f"Enter the step number to seek to (0 - {len(game_states)-1}) or -1 to run through all: "))
+        
+            if seek == -1:
+                visualize_game(game_states)
+            else:
+                interval = int(input(f"Enter the number of steps to visualize from the seek point (1 - {len(game_states) - seek}): "))
+                visualize_game(game_states, seek = seek, step_interval = interval)
+
+        except FileNotFoundError:
+            print("File not found.")
+            
+            
+
+        
+
 
     
 
